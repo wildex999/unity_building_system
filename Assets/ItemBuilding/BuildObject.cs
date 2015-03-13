@@ -5,6 +5,10 @@ using System.Collections;
  * All objects that can be placed on a Build Surface must have this Script(Or a Script that inherits it) as a component.
  * This will handle things like the contact points and collision checking.
  * When the object has been placed, this Script can be disabled or removed.
+ * 
+ * TODO: Assume that Build Points will not change often or at all.
+ * Then we might bake it into an array instead of walking the hierarchy every time.
+ * This might be done during build.
  * */
 
 public class BuildObject : MonoBehaviour
@@ -21,35 +25,45 @@ public class BuildObject : MonoBehaviour
 		if (buildPointsParent == null)
 			return 0;
 
-		int pointCount = 0;
-		foreach (Transform child in buildPointsParent.transform) {
-			pointCount++;
-		}
-
-		return pointCount;
+		BuildPoint[] points = getBuildPoints ();
+		return points.Length;
 	}
-	
+
+	//Add a new Build point
+	//Return: The index of the new point, or -1 if it failed to add
 	public int addBuildPoint (BuildPoint point)
 	{
 		if (buildPointsParent == null)
 			return -1;
+
 		point.transform.parent = buildPointsParent.transform;
 
 		return getBuildPointCount () - 1;
 	}
 
+	//Get the build point and index
+	//Return: The build point, or null if index doesn't exist
 	public BuildPoint getBuildPoint (int index)
 	{
 		if (buildPointsParent == null)
 			return null;
 
-		int curIndex = 0;
-		foreach (Transform child in buildPointsParent.transform) {
-			if (curIndex == index)
-				return child.GetComponent<BuildPoint> ();
-			curIndex++;
-		}
-		return null;
+		if (index < 0)
+			return null;
+
+		BuildPoint[] points = getBuildPoints ();
+		if (index >= points.Length)
+			return null;
+
+		return points [index];
+	}
+
+	public BuildPoint[] getBuildPoints ()
+	{
+		if (buildPointsParent == null)
+			return new BuildPoint[0];
+
+		return buildPointsParent.GetComponentsInChildren<BuildPoint> ();
 	}
 
 	//Returns the current Build Point for this BuildObject
@@ -57,6 +71,11 @@ public class BuildObject : MonoBehaviour
 	public BuildPoint getCurrentBuildPoint ()
 	{
 		return currentBuildPoint;
+	}
+
+	public void setCurrentBuildPoint (BuildPoint point)
+	{
+		currentBuildPoint = point;
 	}
 
 	public bool canPlace (BuildSurface surface, Vector3 position, Quaternion rotation)

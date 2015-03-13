@@ -25,7 +25,7 @@ public class BuildSurface : MonoBehaviour
 	private Vector3 inwardVector;
 	private List<BuildObject> objectList;
 
-	public int slots; //Max number of objects that can be placed on the surface
+	public int slots = 0; //Max number of objects that can be placed on the surface(0 = unlimited)
 	public BuildEventHandler eventListener; //Allow event listener to be set from Editor
 	public bool buildOutwards = true;
 	public bool buildInwards = false;
@@ -67,7 +67,7 @@ public class BuildSurface : MonoBehaviour
 		//if(eventListener != null)
 		//	eventListener.canPlace();
 
-		if (objectList.Count >= slots)
+		if (objectList.Count >= slots && slots != 0)
 			return false;
 
 		//Check facing
@@ -91,14 +91,18 @@ public class BuildSurface : MonoBehaviour
 
 	//Place the object on the position with the given rotation
 	//Assumes canPlace has already been called
-	public void placeObject (BuildObject placeObject, Vector3 position, Vector3 rotation)
+	public void placeObject (BuildObject placeObject, Vector3 position, Quaternion rotation)
 	{
 		//if(eventListener != null)
 		//	eventListener.objectPlace();
 
+		placeObject.transform.parent = transform;
+		placeObject.transform.position = position;
+		placeObject.transform.rotation = rotation;
 		//TODO: Here would be the place to inform the server.
 
 		objectList.Add (placeObject);
+
 	}
 
 	//Remove the object from the surface.
@@ -108,6 +112,10 @@ public class BuildSurface : MonoBehaviour
 		//if(eventListener != null)
 		//	eventListener.objectRemove();
 
-		return objectList.Remove (removeObject);
+		bool removed = objectList.Remove (removeObject);
+		if (removed)
+			removeObject.transform.parent = null;
+
+		return removed;
 	}
 }
