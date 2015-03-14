@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using System.Collections.Generic;
+using UnityStandardAssets.Characters.FirstPerson;
 
 public class ItemPlacer : MonoBehaviour
 {
@@ -10,8 +11,12 @@ public class ItemPlacer : MonoBehaviour
 	private BuildObject itemInHand;
 	private bool isShowingItem = false;
 	private bool hasPlaced = false; //Used to make sure we only do one placement per Update
-	private Quaternion itemRotation; //Store the initial rotation of the item
+	private Quaternion originalRotation; //The initial local rotation of the item
+	private float customRotation = 0; //Custom rotation around the surface normal
 	private BuildSurface prevSurface;
+	private RaycastHit prevRayHit;
+	private bool hasPrevRay = false; //RaycastHit can't be null it seems(Stupid)
+	private bool insertedRigidBody = false;
 
 	public float placeDistance = 5f;
 	public int layerSurfacesDisabled = 2;
@@ -26,12 +31,14 @@ public class ItemPlacer : MonoBehaviour
 			this.layer = layer;
 		}
 	}
-	private List<ObjectLayer> disabledColliders;
+	private List<ObjectLayer> disabledColliders; //List of GameObjects put into the "No Racyaster" layer
+	private List<Collider> triggerColliders; //List of Colliders that originally was NOT trigger
 
 
 	void Start ()
 	{
 		disabledColliders = new List<ObjectLayer> ();
+		triggerColliders = new List<Collider> ();
 		//TEST: Get the first item from inventory for now
 		//TODO: Allow selecting item using numbers/scroll
 		instantiateItemInHand (currentIndex);
@@ -73,25 +80,47 @@ public class ItemPlacer : MonoBehaviour
 			instantiateItemInHand (currentIndex);
 		}
 
-		//Check if we are changing current Build point
-		if (itemInHand != null && Input.GetButtonDown ("Fire2")) {
-			int count = itemInHand.getBuildPointCount ();
-			if (count != 0) {
-				if (++currentPointIndex >= count)
-					currentPointIndex = 0;
-				itemInHand.setCurrentBuildPoint (itemInHand.getBuildPoint (currentPointIndex));
+		if (itemInHand != null) {
+
+			//Check if we are changing current Build point
+			if (Input.GetButtonDown ("Fire3")) {
+				int count = itemInHand.getBuildPointCount ();
+				if (count != 0) {
+					if (++currentPointIndex >= count)
+						currentPointIndex = 0;
+					itemInHand.setCurrentBuildPoint (itemInHand.getBuildPoint (currentPointIndex));
+				}
+
 			}
 
-		}
+			//Check if we are rotating
+			if (hasPrevRay && Input.GetButton ("Fire2")) {
+				//Disable the current mouse/camera movement
+				//TODO: Make this more portable, maybe by using an event
+				FirstPersonController controller = GetComponent<FirstPersonController> ();
+				if (controller != null)
+					controller.enabled = false;
 
-		if (itemInHand != null) {
+				float rotAmount = Input.GetAxis ("Horizontal");
+				rotAmount += Input.GetAxis ("Mouse X");
+				//We rotate around the surface normal
+				//TODO: Detect when we have done a full 360 degree rotation, and wrap around to avoid precision problems.
+				customRotation += rotAmount;
+
+			} else {
+				//Re-enable the current mouse/camera movement
+				//TODO: Make this more portable, maybe by using an event
+				FirstPersonController controller = GetComponent<FirstPersonController> ();
+				if (controller != null)
+					controller.enabled = true;
+			}
+
 			//Do placement check
 			if (doPlaceUpdate ()) {
 				//When not possible to place, show the item in our hand
 				showItemInHand (true);
 			}
 		}
-
 
 	}
 
@@ -116,20 +145,24 @@ public class ItemPlacer : MonoBehaviour
 					if (prevSurface != surface && prevSurface != null)
 						prevSurface.showSnapPoints (false);
 					prevSurface = surface;
+					prevRayHit = hit;
+					hasPrevRay = true;
+
 					showItemOnSurface (surface, hit);
 					surface.showSnapPoints (true);
 					resetToHand = false;
 					
 					if (!hasPlaced && Input.GetButtonDown ("Fire1")) {
-						
 						//Check if object allows us to place it there(Does collision check etc.)
 						if (itemInHand.canPlace (surface, itemInHand.getCurrentBuildPoint ().transform.position, itemInHand.transform.rotation)) {
 							surface.placeObject (itemInHand, itemInHand.transform.position, itemInHand.transform.rotation);
+							float prevRotation = customRotation;
 							removeItemInHand (); //Do this so the new instantiate doesn't delete it
 						
 							//Get a new of the same item for our hand, would probably do a check here to se if we are allowed(Empty?)
 							instantiateItemInHand (currentIndex);
 							hasPlaced = true;
+							customRotation = prevRotation; //Remember the rotation when placing the same item
 							return doPlaceUpdate (); //Do placement update for the new object
 						}
 					}
@@ -145,6 +178,7 @@ public class ItemPlacer : MonoBehaviour
 				prevSurface.showSnapPoints (false);
 				prevSurface = null;
 			}
+			hasPrevRay = false;
 		}
 
 		return resetToHand;
@@ -159,9 +193,21 @@ public class ItemPlacer : MonoBehaviour
 			oldItem = removeItemInHand ();
 
 		itemInHand = item;
-		itemRotation = item.transform.localRotation;
+		originalRotation = item.transform.localRotation;
 		showItemInHand (true);
 		ignoreCollidersInHand ();
+
+		customRotation = 0;
+
+		//Insert RigidBody to enable Collider events
+		//TODO: If there already is a RigidBody we need to mark it as kinematic to avoid collisions while placing.
+		Rigidbody body = item.GetComponent<Rigidbody> ();
+		insertedRigidBody = false;
+		if (body == null) {
+			body = item.gameObject.AddComponent<Rigidbody> ();
+			body.isKinematic = true;
+			insertedRigidBody = true;
+		}
 
 		int count = itemInHand.getBuildPointCount ();
 		if (count > 0) {
@@ -180,6 +226,14 @@ public class ItemPlacer : MonoBehaviour
 		BuildObject item = itemInHand;
 		if (item == null)
 			return null;
+
+		//Remove RigidBody if we added one
+		if (insertedRigidBody) {
+			Rigidbody body = item.GetComponent<Rigidbody> ();
+			if (body != null)
+				Destroy (body);
+			insertedRigidBody = false;
+		}
 
 		showItemInHand (false);
 		itemInHand.onSurface (false, false);
@@ -210,15 +264,31 @@ public class ItemPlacer : MonoBehaviour
 	}
 
 	//Go through and store, and ignore all Collider(Put them into No Raycast layer) for the current item in hand
+	//Will also mark all colliders as "Trigger", for placement checking
 	public void ignoreCollidersInHand ()
 	{
 		if (itemInHand == null)
 			return;
 
-		Transform[] objects = GetComponentsInChildren<Transform> ();
+		Transform[] objects = itemInHand.GetComponentsInChildren<Transform> ();
 		foreach (Transform obj in objects) {
 			disabledColliders.Add (new ObjectLayer (obj.gameObject, obj.gameObject.layer));
 			obj.gameObject.layer = layerSurfacesDisabled;
+
+			//Set all colliders to Trigger, and store their original state
+			Collider[] colliders = obj.GetComponents<Collider> ();
+			foreach (Collider collider in colliders) {
+				if (collider is MeshCollider) { //Mesh Collider can't be Trigger unless Convex
+					//TODO: Figure a fix for this. The easiest would be to just make it convex for this period
+					//but there are limits on Convex Mesh colliders.
+					Debug.LogWarning ("ItemInHand has a Mesh Collider. Currently not implemented.");
+				} else {
+					if (!collider.isTrigger) {
+						triggerColliders.Add (collider);
+						collider.isTrigger = true;
+					}
+				}
+			}
 		}
 	}
 
@@ -228,14 +298,21 @@ public class ItemPlacer : MonoBehaviour
 		if (itemInHand == null)
 			return;
 
+		//Set objects to original layer
 		foreach (ObjectLayer disabledCollider in disabledColliders) {
 			if (disabledCollider.obj == null) //Can have been destroyed at this point
 				continue;
 			disabledCollider.obj.layer = disabledCollider.layer;
 		}
 		disabledColliders.Clear ();
-	}
 
+		//Set colliders to original isTrigger state
+		foreach (Collider collider in triggerColliders) {
+			if (collider != null)
+				collider.isTrigger = false;
+		}
+		triggerColliders.Clear ();
+	}
 
 	//Show the item as placed on the surface, will use the object's current Build Point.
 	//Assumes a canPlace check has already been done on the surface.
@@ -253,7 +330,7 @@ public class ItemPlacer : MonoBehaviour
 		showItemInHand (false);
 
 		//Set the old rotation, so the rotation when on the surface isn't dependent on the global rotation from the Character
-		itemInHand.transform.rotation = itemRotation; 
+		itemInHand.transform.rotation = originalRotation; 
 
 		//If snap is on, find the nearest Snap point is show it there
 		Vector3 snapPoint;
@@ -273,6 +350,9 @@ public class ItemPlacer : MonoBehaviour
 		//Then we apply the rotation
 		itemInHand.transform.rotation = rotDelta * itemInHand.transform.rotation;
 
+		//Apply custom rotation from user
+		if (currentPoint.canRotate)
+			itemInHand.transform.RotateAround (itemInHand.transform.position, ray.normal, customRotation);
 
 		//Move the object so the Build Point is placed at the Ray point
 		//We multiply the point vector by 1.01f to leave a gap enough for them to not collide

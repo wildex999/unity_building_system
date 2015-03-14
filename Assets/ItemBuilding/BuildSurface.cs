@@ -37,14 +37,14 @@ public class BuildSurface : MonoBehaviour
 	private List<GameObject> visibleSnapPoints; //List of all snap points currently being renderer
 
 	// Use this for initialization
-	void Start ()
+	public void Start ()
 	{
 		objectList = new List<BuildObject> ();
 		//snapPoints = new List<Vector3> (); //Initialized by Unity since public & serialized
 		visibleSnapPoints = new List<GameObject> ();
 	}
 	
-	public void showSnapPoints (bool show)
+	public virtual void showSnapPoints (bool show)
 	{
 		if (!drawSnapPointsOnPlace)
 			return;
@@ -79,7 +79,7 @@ public class BuildSurface : MonoBehaviour
 	//position: Global position
 	//out snapPoint: The new snap point returned. Will be the same as position if none was found
 	//Return: True if a snap point was found, false if not
-	public bool getSnapPoint (Vector3 position, out Vector3 snapPoint)
+	public virtual bool getSnapPoint (Vector3 position, out Vector3 snapPoint)
 	{
 		//Convert global position into local
 		Vector3 localPosition = transform.InverseTransformPoint (position);
@@ -117,29 +117,41 @@ public class BuildSurface : MonoBehaviour
 		return true;
 	}
 
-	//Check whether the surface allows the given object to be placed here
-	public bool canPlace (BuildObject placeObject, Vector3 surfacePosition)
+	//Check if the current facing is correct
+	//Return: True if placing allowed on the current facing
+	public virtual bool checkFacing (BuildObject placeObject, Vector3 surfacePosition)
 	{
-		//if(eventListener != null)
-		//	if(!eventListener.canPlace())
-		//		return false;
-
-		if (objectList.Count >= slots && slots != 0)
-			return false;
-
-		//Check facing
-		bool gotFace = false;
-		Vector3 inwardVector = transform.position - transform.parent.position;
-		Vector3 facing = placeObject.transform.parent.position - transform.position;
-		float angle = Vector3.Dot (facing, inwardVector);
-		if (angle <= 0 && buildInwards) {
-			gotFace = true;
-		} else if (angle > 0 && buildOutwards) {
-			gotFace = true;
+		if (transform.parent == null) { //Can't check facing
+			return true;//For now we default to allowing it
+		} else {
+			Vector3 inwardVector = transform.position - transform.parent.position;
+			Vector3 facing = placeObject.transform.parent.position - transform.position;
+			float angle = Vector3.Dot (facing, inwardVector);
+			if (angle <= 0 && buildInwards) {
+				return true;
+			} else if (angle > 0 && buildOutwards) {
+				return true;
+			}
 		}
 
-		if (!gotFace)
+		return false;
+	}
+
+	//Check whether the surface allows the given object to be placed here
+	public virtual bool canPlace (BuildObject placeObject, Vector3 surfacePosition)
+	{
+		if (eventListener != null && !eventListener.canPlace (this, placeObject, surfacePosition)) {
+			Debug.Log ("canPlaceFailed: eventCanPlace");
 			return false;
+		}
+		if (objectList.Count >= slots && slots != 0) {
+			Debug.Log ("canPlaceFailed: Slot count");
+			return false;
+		}
+		if (!checkFacing (placeObject, surfacePosition)) {
+			Debug.Log ("canPlaceFailed: facing");
+			return false;
+		}
 
 		//TODO: Further checking should be done to verify that the object is not
 		//being placed in the air at some random position(Cheating?), at least server side.
@@ -149,10 +161,10 @@ public class BuildSurface : MonoBehaviour
 
 	//Place the object on the position with the given rotation
 	//Assumes canPlace has already been called
-	public void placeObject (BuildObject placeObject, Vector3 position, Quaternion rotation)
+	public virtual void placeObject (BuildObject placeObject, Vector3 position, Quaternion rotation)
 	{
-		//if(eventListener != null)
-		//	eventListener.objectPlace();
+		if (eventListener != null)
+			eventListener.objectPlace (this, placeObject, position, rotation);
 
 		placeObject.transform.parent = transform;
 		placeObject.transform.position = position;
@@ -165,10 +177,10 @@ public class BuildSurface : MonoBehaviour
 
 	//Remove the object from the surface.
 	//Return true if the object was removed(If false, the object wasn't here to begin with)
-	public bool removeObject (BuildObject removeObject)
+	public virtual bool removeObject (BuildObject removeObject)
 	{
-		//if(eventListener != null)
-		//	eventListener.objectRemove();
+		if (eventListener != null)
+			eventListener.objectRemove (this, removeObject);
 
 		bool removed = objectList.Remove (removeObject);
 		if (removed)
