@@ -7,6 +7,7 @@ public class ItemPlacer : MonoBehaviour
 	public BuildObject[] inventory = new BuildObject[5];
 	public int currentIndex = 0;
 	public int currentPointIndex = 0;
+	public Texture mouseTex;
 
 	private BuildObject itemInHand;
 	private bool isShowingItem = false;
@@ -54,6 +55,11 @@ public class ItemPlacer : MonoBehaviour
 			if (oldItem != null)
 				Destroy (oldItem.gameObject);
 		}
+	}
+
+	void OnGUI ()
+	{
+		GUI.DrawTexture (new Rect ((Screen.width / 2) - 8, (Screen.height / 2) - 8, 16, 16), mouseTex);
 	}
 
 	void Update ()
