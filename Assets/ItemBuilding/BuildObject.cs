@@ -82,17 +82,38 @@ public class BuildObject : MonoBehaviour
 	{
 		if (!ignoreCollisions && collisionCount != 0)
 			return false;
-
 		return true;
 	}
 
-	void OnCollisionEnter (Collision collision)
+	//Called whenever the object is being shown on the surface
+	//This is where you will put an alpha on the rendering, and give it a color depening on if placement is valid
+	//onSurface: True if currnetly showing on surface, false else
+	//valid: Whether the current placement on the surface is valid
+	public void onSurface (bool onSurface, bool valid)
 	{
+		//TODO: Write this properly, as it is it will not store previous values
+		Renderer[] renders = GetComponentsInChildren<Renderer> ();
+		foreach (Renderer render in renders) {
+			if (onSurface) {
+				if (!valid)
+					render.material.color = new Color (1, 0.5f, 0.5f, 1f);
+				else
+					render.material.color = new Color (1, 1, 1, 1f);
+			} else {
+				render.material.color = new Color (1, 1, 1, 1);
+			}
+		}
+	}
+
+	public void OnCollisionEnter (Collision collision)
+	{
+		Debug.Log ("Collision +");
 		collisionCount++;
 	}
 
-	void OnCollisionExit (Collision collision)
+	public void OnCollisionExit (Collision collision)
 	{
+		Debug.Log ("Collision -");
 		collisionCount--;
 	}
 }

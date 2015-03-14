@@ -21,8 +21,6 @@ using System.Collections.Generic;
 
 public class BuildSurface : MonoBehaviour
 {
-
-	private Vector3 inwardVector;
 	private List<BuildObject> objectList;
 
 	public int slots = 0; //Max number of objects that can be placed on the surface(0 = unlimited)
@@ -38,16 +36,6 @@ public class BuildSurface : MonoBehaviour
 	void Start ()
 	{
 		objectList = new List<BuildObject> ();
-
-		//Only need to call this client side
-		calculateFacing ();
-	}
-
-	//Calculate the "inward" facing vector.
-	//Should be called in canPlace the relative positions change often.
-	public void calculateFacing ()
-	{
-		inwardVector = transform.position - transform.parent.position;
 	}
 	
 	public void showSnapPoints (bool show)
@@ -65,28 +53,34 @@ public class BuildSurface : MonoBehaviour
 	public bool canPlace (BuildObject placeObject, Vector3 surfacePosition, Vector3 objectPosition, Quaternion objectRotation)
 	{
 		//if(eventListener != null)
-		//	eventListener.canPlace();
+		//	if(!eventListener.canPlace())
+		//		return false;
 
 		if (objectList.Count >= slots && slots != 0)
 			return false;
 
 		//Check facing
+		bool gotFace = false;
+		Vector3 inwardVector = transform.position - transform.parent.position;
 		Vector3 facing = objectPosition - transform.position;
 		float angle = Vector3.Dot (facing, inwardVector);
 		if (angle <= 0 && buildInwards) {
-			return true;
+			gotFace = true;
 		} else if (angle > 0 && buildOutwards) {
-			return true;
+			gotFace = true;
 		}
 
-		//Chekc if object agrees(Does collision check etc.)
+		if (!gotFace)
+			return false;
+
+		//Check if object agrees(Does collision check etc.)
 		if (!placeObject.canPlace (this, objectPosition, objectRotation))
 			return false;
 
 		//TODO: Further checking should be done to verify that the object is not
 		//being placed in the air at some random position(Cheating?), at least server side.
 
-		return false;
+		return true;
 	}
 
 	//Place the object on the position with the given rotation
