@@ -78,15 +78,27 @@ public class BuildObject : MonoBehaviour
 		currentBuildPoint = point;
 	}
 
+	//Position: The point on the surface the object is trying to place
 	public bool canPlace (BuildSurface surface, Vector3 position, Quaternion rotation)
 	{
 		if (!ignoreCollisions && collisionCount != 0)
 			return false;
+
+		//Check Snap point
+		if (surface.forcePlaceOnSnapPoint) {
+			Vector3 snapPosition;
+			//Allow for a slight distance as there will be some no matter what
+			if (!surface.getSnapPoint (position, out snapPosition) || Vector3.Distance (position, snapPosition) > 0.05f) {
+				return false;
+			}
+		}
+
 		return true;
 	}
 
 	//Called whenever the object is being shown on the surface
-	//This is where you will put an alpha on the rendering, and give it a color depening on if placement is valid
+	//This is where you will put an alpha on the rendering, and give it a color depening on if placement is valid.
+	//You can also do extra rendering, showing icons or anything else.
 	//onSurface: True if currnetly showing on surface, false else
 	//valid: Whether the current placement on the surface is valid
 	public void onSurface (bool onSurface, bool valid)
@@ -96,24 +108,24 @@ public class BuildObject : MonoBehaviour
 		foreach (Renderer render in renders) {
 			if (onSurface) {
 				if (!valid)
-					render.material.color = new Color (1, 0.5f, 0.5f, 1f);
+					render.material.color = new Color (1, 0.5f, 0.5f, 0.5f);
 				else
-					render.material.color = new Color (1, 1, 1, 1f);
+					render.material.color = new Color (1, 1, 1, 0.5f);
 			} else {
 				render.material.color = new Color (1, 1, 1, 1);
 			}
 		}
 	}
 
-	public void OnCollisionEnter (Collision collision)
+
+
+	public void OnTriggerEnter (Collider collision)
 	{
-		Debug.Log ("Collision +");
 		collisionCount++;
 	}
 
-	public void OnCollisionExit (Collision collision)
+	public void OnTriggerExit (Collider collision)
 	{
-		Debug.Log ("Collision -");
 		collisionCount--;
 	}
 }

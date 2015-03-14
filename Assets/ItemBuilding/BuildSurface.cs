@@ -14,7 +14,7 @@ using System.Collections.Generic;
  * This base implementation is meant to use a plane collider(Box collider with one size set to 0)
  * 
  * Events:
- * canPlace(Surface, BuildObject, SurfacePosition, ObjectPosition, ObjectRotation) - Called to ask if a certain object can be placed
+ * canPlace(Surface, BuildObject, SurfacePosition) - Called to ask if a certain object can be placed
  * objectPlace(Surface, BuildObject, SurfacePosition, ObjectPosition, ObjectRotation) - Called before an object is placed.
  * objectRemove(Surface, BuildObject) - Called before an object is removed.
  * */
@@ -29,28 +29,96 @@ public class BuildSurface : MonoBehaviour
 	public bool buildInwards = false;
 
 	public bool forcePlaceOnSnapPoint = false; //Whether or not placing is only allowed on the snap point(s)
-	public bool drawSnapPointsOnHover = false; //Whether or not to show snap points when placing object on surface
-	private bool drawSnapPoints = false;
+	public bool drawSnapPointsOnPlace = true; //Whether or not to show snap points when placing object on surface
+	public float snapDistance = 0.5f; //The max distance between position and point for it to snap to the point
+	public List<Vector3> snapPoints; //Snap points, in local coordinates
+
+	private bool currentlyShowingSnapPoints = false;
+	private List<GameObject> visibleSnapPoints; //List of all snap points currently being renderer
 
 	// Use this for initialization
 	void Start ()
 	{
 		objectList = new List<BuildObject> ();
+		//snapPoints = new List<Vector3> (); //Initialized by Unity since public & serialized
+		visibleSnapPoints = new List<GameObject> ();
 	}
 	
 	public void showSnapPoints (bool show)
 	{
-		drawSnapPoints = show;
+		if (!drawSnapPointsOnPlace)
+			return;
+		if (show && currentlyShowingSnapPoints)
+			return;
+		if (!show && !currentlyShowingSnapPoints)
+			return;
+
+		if (show) {
+			currentlyShowingSnapPoints = true;
+			foreach (Vector3 point in snapPoints) {
+				GameObject newObj = GameObject.CreatePrimitive (PrimitiveType.Sphere);
+				newObj.transform.parent = transform;
+				newObj.transform.localPosition = point;
+				newObj.transform.localScale = new Vector3 (0.1f, 0.1f, 0.1f);
+				newObj.GetComponent<Collider> ().enabled = false; 
+				newObj.GetComponent<Renderer> ().material.color = new Color (0.1f, 0.1f, 0.1f);
+				visibleSnapPoints.Add (newObj);
+			}
+		} else {
+			foreach (GameObject obj in visibleSnapPoints) {
+				if (obj == null)
+					return;
+				Destroy (obj);
+			}
+			visibleSnapPoints.Clear ();
+			currentlyShowingSnapPoints = false;
+		}
 	}
 
 	//Get the closest snap point to the given location
-	public Vector3 getSnapPoint (Vector3 position)
+	//position: Global position
+	//out snapPoint: The new snap point returned. Will be the same as position if none was found
+	//Return: True if a snap point was found, false if not
+	public bool getSnapPoint (Vector3 position, out Vector3 snapPoint)
 	{
-		return position;
+		//Convert global position into local
+		Vector3 localPosition = transform.InverseTransformPoint (position);
+
+		//Go through all points, and find the closest
+		bool gotFirst = false;
+		Vector3 closest = localPosition;
+		float closestDistance = float.MaxValue;
+		foreach (Vector3 point in snapPoints) {
+			float nextDistance = Vector3.Distance (point, localPosition);
+			//Find first point
+			if (!gotFirst) {
+				if (nextDistance > snapDistance)
+					continue;
+
+				closest = point;
+				closestDistance = nextDistance;
+				gotFirst = true;
+				continue;
+			}
+
+			//Try to find a closer point
+			if (nextDistance < closestDistance) {
+				closest = point;
+				closestDistance = nextDistance;
+			}
+		}
+
+		if (!gotFirst) {
+			snapPoint = position;
+			return false;
+		}
+
+		snapPoint = transform.TransformPoint (closest);
+		return true;
 	}
 
-	//Check whether the given object can be placed here
-	public bool canPlace (BuildObject placeObject, Vector3 surfacePosition, Vector3 objectPosition, Quaternion objectRotation)
+	//Check whether the surface allows the given object to be placed here
+	public bool canPlace (BuildObject placeObject, Vector3 surfacePosition)
 	{
 		//if(eventListener != null)
 		//	if(!eventListener.canPlace())
@@ -62,7 +130,7 @@ public class BuildSurface : MonoBehaviour
 		//Check facing
 		bool gotFace = false;
 		Vector3 inwardVector = transform.position - transform.parent.position;
-		Vector3 facing = objectPosition - transform.position;
+		Vector3 facing = placeObject.transform.parent.position - transform.position;
 		float angle = Vector3.Dot (facing, inwardVector);
 		if (angle <= 0 && buildInwards) {
 			gotFace = true;
@@ -71,10 +139,6 @@ public class BuildSurface : MonoBehaviour
 		}
 
 		if (!gotFace)
-			return false;
-
-		//Check if object agrees(Does collision check etc.)
-		if (!placeObject.canPlace (this, objectPosition, objectRotation))
 			return false;
 
 		//TODO: Further checking should be done to verify that the object is not
