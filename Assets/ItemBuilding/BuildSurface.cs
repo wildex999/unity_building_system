@@ -165,8 +165,11 @@ public class BuildSurface : MonoBehaviour
 	{
 		if (eventListener != null)
 			eventListener.objectPlace (this, placeObject, position, rotation);
+		if (transform.parent == null)
+			placeObject.transform.parent = transform;
+		else
+			placeObject.transform.parent = transform.parent; //TEST: Set as sibling instead of child
 
-		placeObject.transform.parent = transform;
 		placeObject.transform.position = position;
 		placeObject.transform.rotation = rotation;
 		//TODO: Here would be the place to inform the server.
